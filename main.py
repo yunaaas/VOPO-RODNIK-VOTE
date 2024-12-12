@@ -15,7 +15,7 @@ from event import *
 import matplotlib.pyplot as plt
 import io
 
-API_TOKEN = '5352353471:AAG7ggHj29FRsHqcksxLKTrGqpoX44IoIoo' 
+API_TOKEN = "TOKEN"
 YOUR_ADMIN_ID = 1012078689 
 
 bot = Bot(token=API_TOKEN)
