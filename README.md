@@ -30,9 +30,11 @@
     source venv/bin/activate  # Для Windows используйте `venv\Scripts\activate`
 3. Установка зависимостей:
      pip install -r requirements.txt
-4. Настройте токен бота, создав файл .env в корне проекта со следующим содержимым: (optional)
-   
-    TELEGRAM_TOKEN='ваш-токен-бота'
+4. Настройте токен бота, создав файл `.env` в корне проекта со следующим содержимым: *(optional)*
+
+```ini
+TELEGRAM_TOKEN='ваш-токен-бота'
+
 6. Запустите бота:
      python main.py
 ## Структура проекта
