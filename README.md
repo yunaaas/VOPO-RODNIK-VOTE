@@ -34,6 +34,7 @@
 
 ```ini
 TELEGRAM_TOKEN='ваш-токен-бота'
+```
 
 6. Запустите бота:
      python main.py
