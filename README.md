@@ -26,10 +26,14 @@
    git clone https://github.com/yunaaas/VOPO-RODNIK-VOTE.git
    cd VOPO-RODNIK-VOTE
 2. Виртуальное окружение:
-    python3 -m venv venv
-    source venv/bin/activate  # Для Windows используйте `venv\Scripts\activate`
+```bash
+python3 -m venv venv
+source venv/bin/activate  # Для Windows используйте venv\Scripts\activate
+```
 3. Установка зависимостей:
-     pip install -r requirements.txt
+   ```bash
+   pip install -r requirements.txt
+   ```
 4. Настройте токен бота, создав файл `.env` в корне проекта со следующим содержимым: *(optional)*
 
 ```ini
