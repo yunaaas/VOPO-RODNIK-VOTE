@@ -22,22 +22,23 @@
 ### Инструкция по установке
 
 1. Клонируйте репозиторий:
-   ```bash
-   git clone https://github.com/yunaaas/VOPO-RODNIK-VOTE.git
-   cd VOPO-RODNIK-VOTE
+```bash
+git clone https://github.com/yunaaas/VOPO-RODNIK-VOTE.git
+cd VOPO-RODNIK-VOTE
+```
 2. Виртуальное окружение:
 ```bash
-  python3 -m venv venv
-  source venv/bin/activate  # Для Windows используйте venv\Scripts\activate
+python3 -m venv venv
+source venv/bin/activate  # Для Windows используйте venv\Scripts\activate
 ```
 3. Установка зависимостей:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 4. Настройте токен бота, создав файл `.env` в корне проекта со следующим содержимым: *(optional)*
 
 ```ini
-  TELEGRAM_TOKEN='ваш-токен-бота'
+TELEGRAM_TOKEN='ваш-токен-бота'
 ```
 
 6. Запустите бота:
