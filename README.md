@@ -42,7 +42,9 @@ TELEGRAM_TOKEN='ваш-токен-бота'
 ```
 
 6. Запустите бота:
-     python main.py
+```bash
+python main.py
+```
 ## Структура проекта
 
 VOPO-RODNIK-VOTE/
