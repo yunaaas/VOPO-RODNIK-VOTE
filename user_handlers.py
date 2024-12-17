@@ -90,12 +90,39 @@ async def handle_vote_selection(callback_query: types.CallbackQuery, state: FSMC
         data = await state.get_data()
         event_id = data.get("event_id")
 
+        # Добавляем запись голоса
         await db.add_response(event_id=event_id, user_id=user_id, user_name=user_name, option_id=option_id)
-        await callback_query.message.reply("Ваш голос записан. Спасибо!", parse_mode=ParseMode.HTML)
+        
+        # Сообщаем пользователю, что голос записан (отправляем новое сообщение)
+        await callback_query.message.answer("Ваш голос записан. Спасибо!", parse_mode=ParseMode.HTML)
+
+        # Удаляем сообщение с кнопками
+        await callback_query.message.delete()
+
+        # Получаем список доступных событий, в которых пользователь ещё не участвовал
+        upcoming_events = await db.get_upcoming_events(user_id)
+        if upcoming_events:
+            keyboard = InlineKeyboardMarkup()
+            for event in upcoming_events:
+                keyboard.add(InlineKeyboardButton(event['event_name'], callback_data=f"event_{event['event_id']}"))
+
+            # Отправляем новое сообщение с доступными событиями
+            await callback_query.message.answer(
+                "Спасибо за участие! Примите участие в следующих событиях:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard
+            )
+        else:
+            # Если нет доступных событий, информируем пользователя
+            await callback_query.message.answer("Вы приняли участие во всех текущих событиях.")
+
         await state.finish()
     except Exception as e:
         print(f"Ошибка в handle_vote_selection: {e}")
-        await callback_query.message.reply("Ошибка при записи голоса. Попробуйте снова.")
+        await callback_query.message.answer("Ошибка при записи голоса. Попробуйте снова.")
+
+
+
 
 
 async def process_workshop_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -179,7 +206,23 @@ async def process_group_number(message: types.Message, state: FSMContext):
 
     if success:
         await message.reply("Вы успешно записаны.", parse_mode=ParseMode.HTML)
+        
+        # После записи на мастер-класс показываем доступные события
+        upcoming_events = await db.get_upcoming_events(user_id)
+        if upcoming_events:
+            keyboard = InlineKeyboardMarkup()
+            for event in upcoming_events:
+                keyboard.add(InlineKeyboardButton(event['event_name'], callback_data=f"event_{event['event_id']}"))
+
+            await message.reply(
+                "Спасибо за регистрацию! Примите участие в следующих событиях:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard
+            )
+        else:
+            await message.reply("Вы приняли участие во всех текущих событиях.")
     else:
         await message.reply("Ошибка записи. Возможно, нет мест.", parse_mode=ParseMode.HTML)
 
     await state.finish()
+

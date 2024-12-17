@@ -486,3 +486,55 @@ class EventDatabase:
         except Exception as e:
             print(f"Error in get_participants_by_groups: {e}")
             return {}
+
+# Получаем список событий, в которых пользователь уже участвовал (голосовал или зарегистрировался на мастер-классе)
+    async def get_user_participated_event_ids(self, user_id: int):
+        # Получаем события, в которых пользователь проголосовал
+        voted_events = await self.get_voted_event_ids(user_id)
+        # Получаем события, на которые пользователь зарегистрировался (мастер-классы)
+        registered_events = await self.get_registered_event_ids(user_id)
+
+        # Объединяем события и удаляем дубликаты
+        return list(set(voted_events + registered_events))
+
+
+    # Получаем список event_id для событий, в которых пользователь проголосовал
+# Получаем список event_id для событий, в которых пользователь проголосовал
+    async def get_voted_event_ids(self, user_id: int):
+        query = """
+            SELECT event_id
+            FROM responses
+            WHERE user_id = ?
+        """
+        async with self.con.cursor() as cursor:
+            await cursor.execute(query, (user_id,))
+            rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
+    # Получаем список event_id для событий, на которые пользователь зарегистрировался
+# Получаем список event_id для событий, на которые пользователь зарегистрировался (мастер-классы)
+    async def get_registered_event_ids(self, user_id: int):
+        query = """
+            SELECT w.event_id
+            FROM workshop_registrations wr
+            JOIN workshops w ON wr.workshop_id = w.workshop_id
+            WHERE wr.user_id = ?
+        """
+        async with self.con.cursor() as cursor:
+            await cursor.execute(query, (user_id,))
+            rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
+    # Получаем список будущих событий, в которых пользователь еще не участвовал
+# Получаем список будущих событий, в которых пользователь еще не участвовал
+    async def get_upcoming_events(self, user_id: int):
+        # Получаем все события
+        events = await self.get_all_events()
+        # Получаем события, в которых пользователь уже участвовал
+        participated_event_ids = await self.get_user_participated_event_ids(user_id)
+        # Фильтруем только те события, в которых пользователь еще не участвовал
+        upcoming_events = [event for event in events if event['event_id'] not in participated_event_ids]
+        return upcoming_events
+
