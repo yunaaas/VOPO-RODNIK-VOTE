@@ -2,6 +2,9 @@
 Тут инфа о боте и админах надо переделать на os.getenv
 '''
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 
