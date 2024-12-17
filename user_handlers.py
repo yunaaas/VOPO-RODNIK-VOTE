@@ -18,19 +18,22 @@ async def reset_state(message: types.Message, state: FSMContext):
 
 
 async def select_event(message: types.Message, state: FSMContext):
-    events = await db.get_all_events()
-
-    if not events:
-        await message.reply("Событий пока нет.")
-        return
-
-    keyboard = InlineKeyboardMarkup()
-    for event in events:
-        event_name = event['event_name']
-        event_id = event['event_id']
-        keyboard.add(InlineKeyboardButton(event_name, callback_data=f"event_{event_id}"))
-
-    await message.reply("Выберите событие:", reply_markup=keyboard)
+    user_id = message.from_user.id
+    user_name = message.from_user.first_name
+    usertag = message.from_user.username
+    upcoming_events = await db.get_upcoming_events(user_id)
+    if upcoming_events:
+        keyboard = InlineKeyboardMarkup()
+        for event in upcoming_events:
+            keyboard.add(InlineKeyboardButton(event['event_name'], callback_data=f"event_{event['event_id']}"))
+        # Редактируем сообщение с новыми событиями
+        await message.answer(
+            f"Привет, {user_name} (@{usertag}). Вот все доступные тебе событие, скорее прими участие в них!",
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
+        )
+    else:
+        await message.reply("Сейчас нет доступных событий для Вас.")
 
 
 async def process_event_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -114,7 +117,7 @@ async def handle_vote_selection(callback_query: types.CallbackQuery, state: FSMC
             )
         else:
             # Если нет доступных событий, информируем пользователя
-            await callback_query.message.answer("Вы приняли участие во всех текущих событиях.")
+            await callback_query.message.answer("Вы приняли участие во всех текущих событиях. Используйте /start для просмотра событий, <b>может быть</b> появилось что-то новое :)", parse_mode=ParseMode.HTML)
 
         await state.finish()
     except Exception as e:
@@ -134,14 +137,17 @@ async def process_workshop_selection(callback_query: types.CallbackQuery, state:
     if workshop:
         registered = await db.is_user_registered_for_workshop(user_id, workshop_id)
         if registered:
-            await callback_query.message.reply(f"Вы уже записаны на мастер-класс: {workshop['workshop_name']}", parse_mode=ParseMode.HTML)
+            # Отредактируем клавиатуру, чтобы показать сообщение, что пользователь уже зарегистрирован
+            await callback_query.message.edit_text(f"Вы уже записаны на мастер-класс: {workshop['workshop_name']}", parse_mode=ParseMode.HTML)
+            await callback_query.message.delete_reply_markup()  # Удалим старую клавиатуру
             return
 
         keyboard = InlineKeyboardMarkup()
         keyboard.add(InlineKeyboardButton("Записаться", callback_data=f"select_workshop_{workshop_id}"))
         keyboard.add(InlineKeyboardButton("Назад", callback_data="back_to_workshops"))
 
-        await callback_query.message.reply(
+        # Редактируем сообщение, добавляем новую клавиатуру
+        await callback_query.message.edit_text(
             f"<b>{workshop['workshop_name']}</b>\n{workshop['workshop_description']}\n\n"
             f"Ведущий: {workshop['instructor']}\nМакс. участников: {workshop['max_participants']}",
             parse_mode=ParseMode.HTML,
@@ -151,6 +157,7 @@ async def process_workshop_selection(callback_query: types.CallbackQuery, state:
         await callback_query.message.reply("Мастер-класс не найден.")
 
 
+# Редактирование сообщения с мастер-классами
 async def back_to_workshops(callback_query: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     event_id = data.get('event_id')
@@ -160,7 +167,9 @@ async def back_to_workshops(callback_query: types.CallbackQuery, state: FSMConte
     for workshop in workshops:
         keyboard.add(InlineKeyboardButton(workshop['workshop_name'], callback_data=f"workshop_{workshop['workshop_id']}"))
 
-    await callback_query.message.reply("Выберите мастер-класс:", reply_markup=keyboard)
+    # Редактируем клавиатуру на том же сообщении
+    await callback_query.message.edit_text("Выберите мастер-класс:", reply_markup=keyboard)
+
 
 
 async def select_workshop(callback_query: types.CallbackQuery, state: FSMContext):
@@ -170,14 +179,18 @@ async def select_workshop(callback_query: types.CallbackQuery, state: FSMContext
     registered = await db.is_user_registered_for_workshop(user_id, workshop_id)
 
     if registered:
-        await callback_query.message.reply("Вы уже записаны на этот мастер-класс.", parse_mode=ParseMode.HTML)
+        # Если пользователь уже зарегистрирован, редактируем сообщение
+        await callback_query.message.edit_text("Вы уже записаны на этот мастер-класс.", parse_mode=ParseMode.HTML)
+        await callback_query.message.delete_reply_markup()  # Удаляем кнопки
         return
 
-    await callback_query.message.reply("Введите имя и фамилию:", parse_mode=ParseMode.HTML)
+    # Изменяем текст сообщения и добавляем кнопки
+    await callback_query.message.edit_text("Введите имя и фамилию:", parse_mode=ParseMode.HTML)
     await state.update_data(workshop_id=workshop_id)
     await EventState.waiting_for_participant_name.set()
 
 
+# Редактируем сообщение после ввода имени участника
 async def process_participant_name(message: types.Message, state: FSMContext):
     participant_name = message.text.strip()
 
@@ -190,6 +203,7 @@ async def process_participant_name(message: types.Message, state: FSMContext):
     await EventState.waiting_for_group_number.set()
 
 
+# Редактируем сообщение после ввода номера отряда
 async def process_group_number(message: types.Message, state: FSMContext):
     group_number = message.text.strip()
 
@@ -206,23 +220,23 @@ async def process_group_number(message: types.Message, state: FSMContext):
 
     if success:
         await message.reply("Вы успешно записаны.", parse_mode=ParseMode.HTML)
-        
-        # После записи на мастер-класс показываем доступные события
+
+        # После записи на мастер-класс редактируем сообщение с доступными событиями
         upcoming_events = await db.get_upcoming_events(user_id)
         if upcoming_events:
             keyboard = InlineKeyboardMarkup()
             for event in upcoming_events:
                 keyboard.add(InlineKeyboardButton(event['event_name'], callback_data=f"event_{event['event_id']}"))
 
-            await message.reply(
+            # Редактируем сообщение с новыми событиями
+            await message.answer(
                 "Спасибо за регистрацию! Примите участие в следующих событиях:",
                 parse_mode=ParseMode.HTML,
                 reply_markup=keyboard
             )
         else:
-            await message.reply("Вы приняли участие во всех текущих событиях.")
+            await message.answer("Вы приняли участие во всех текущих событиях. Используйте /start для просмотра событий, <b>может быть</b> появилось что-то новое :)", parse_mode=ParseMode.HTML)
+
     else:
         await message.reply("Ошибка записи. Возможно, нет мест.", parse_mode=ParseMode.HTML)
-
     await state.finish()
-
