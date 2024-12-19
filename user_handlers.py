@@ -33,7 +33,7 @@ async def select_event(message: types.Message, state: FSMContext):
             reply_markup=keyboard
         )
     else:
-        await message.reply("Сейчас нет доступных событий для Вас.")
+        await message.reply("Сейчас нет доступных событий для Вас. Попробуйте написать позже /start")
 
 
 async def process_event_selection(callback_query: types.CallbackQuery, state: FSMContext):
