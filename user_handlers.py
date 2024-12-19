@@ -21,7 +21,7 @@ async def select_event(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
     upcoming_events = await db.get_upcoming_events(user_id)
-    string = f"Привет, {user_name}. Вот все доступные тебе событие, скорее прими участие в них!"
+    string = f"Привет, <b>{user_name}</b>. Вот все доступные вам событие, скорее прими участие в них!"
     if upcoming_events:
         keyboard = InlineKeyboardMarkup()
         for event in upcoming_events:
@@ -33,7 +33,7 @@ async def select_event(message: types.Message, state: FSMContext):
             reply_markup=keyboard
         )
     else:
-        await message.reply("Сейчас нет доступных событий для Вас. Попробуйте написать позже /start")
+        await message.reply("Сейчас нет доступных событий для <b>Вас</b>. \nПопробуйте написать позже /start", parse_mode=ParseMode.HTML)
 
 
 async def process_event_selection(callback_query: types.CallbackQuery, state: FSMContext):
