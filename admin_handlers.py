@@ -378,20 +378,37 @@ async def visualize_by_groups(callback_query: types.CallbackQuery):
     groups = await db.get_participants_by_groups(event_id)
 
     if not groups:
-        await callback_query.message.edit_text(
+        await callback_query.message.answer(
             "<b>Нет данных для визуализации по отрядам.</b>",
-            parse_mode=ParseMode.HTML
+            parse_mode="HTML"
         )
         return
 
     response = "<b>Визуализация по отрядам:</b>\n\n"
-    for group_number, participants in groups.items():
-        response += f"<b>Отряд {group_number}:</b>\n"
-        for participant in participants:
-            response += f"  - {participant['name']} (Мастер-класс: {participant['workshop_name']})\n"
-        response += "\n"
+    messages = []  # Список для хранения частей сообщений
+    current_message = ""  # Текущее сообщение для отправки
 
-    await callback_query.message.edit_text(response, parse_mode=ParseMode.HTML)
+    for group_number, participants in groups.items():
+        group_info = f"<b>Отряд {group_number}:</b>\n"
+        for participant in participants:
+            group_info += f"  - {participant['name']} (Мастер-класс: {participant['workshop_name']})\n"
+        group_info += "\n"
+
+        # Проверяем длину текущего сообщения
+        if len(current_message) + len(group_info) > 4096:  # Ограничение Telegram
+            messages.append(current_message)  # Сохраняем текущее сообщение
+            current_message = ""  # Очищаем для следующей части
+
+        current_message += group_info
+
+    # Добавляем последнюю часть
+    if current_message:
+        messages.append(current_message)
+
+    # Отправляем все части сообщений
+    for msg in messages:
+        await callback_query.message.answer(msg, parse_mode="HTML")
+
 
 
 
