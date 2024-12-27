@@ -341,32 +341,16 @@ async def visualize_by_classes(callback_query: types.CallbackQuery):
         return
 
     response = "<b>Визуализация по мастер-классам:</b>\n\n"
-    messages = []  # Для хранения частей сообщений
+    messages = []  # Для хранения сообщений по частям
     current_message = ""  # Текущее сообщение для отправки
 
-    for workshop in workshops:  # Предполагается, что workshops — список словарей
-        workshop_name = workshop['workshop_name']
-        workshop_description = workshop['workshop_description']
-        max_participants = workshop['max_participants']
-        current_participants = workshop['current_participants']
-        available_spots = max_participants - current_participants
-        participants = workshop.get('participants', [])
-
-        # Формируем информацию о мастер-классе
-        workshop_info = (
-            f"<b>{workshop_name}:</b>\n"
-            f"  - Всего мест: {max_participants}\n"
-            f"  - Занято: {current_participants}\n"
-            f"  - Свободных мест: {available_spots}\n"
-        )
-
+    for workshop_name, participants in workshops.items():
+        workshop_info = f"<b>{workshop_name}:</b>\n"
         if participants:
-            workshop_info += "  - Участники:\n"
             for participant in participants:
-                workshop_info += f"    - {participant['name']} (отряд {participant['group_number']})\n"
+                workshop_info += f"  - {participant['name']} (отряд {participant['group_number']})\n"
         else:
             workshop_info += "  - Нет участников\n"
-
         workshop_info += "\n"
 
         # Проверяем длину текущего сообщения
@@ -383,8 +367,6 @@ async def visualize_by_classes(callback_query: types.CallbackQuery):
     # Отправляем все части сообщений
     for msg in messages:
         await callback_query.message.answer(msg, parse_mode="HTML")
-
-
 
 
 
@@ -408,28 +390,8 @@ async def visualize_by_groups(callback_query: types.CallbackQuery):
 
     for group_number, participants in groups.items():
         group_info = f"<b>Отряд {group_number}:</b>\n"
-
         for participant in participants:
-            # Получаем данные мастер-класса участника
-            workshop_id = participant['workshop_id']
-            workshop = await db.get_workshop_by_id(workshop_id)
-
-            if workshop:
-                workshop_name = workshop['workshop_name']
-                workshop_description = workshop['workshop_description']
-                max_participants = workshop['max_participants']
-                current_participants = workshop['current_participants']
-                available_spots = max_participants - current_participants
-
-                group_info += (
-                    f"  - {participant['name']} (Мастер-класс: {workshop_name})\n"
-                    f"      • Всего мест: {max_participants}\n"
-                    f"      • Занято: {current_participants}\n"
-                    f"      • Свободных мест: {available_spots}\n"
-                )
-            else:
-                group_info += f"  - {participant['name']} (Мастер-класс не найден)\n"
-
+            group_info += f"  - {participant['name']} (Мастер-класс: {participant['workshop_name']})\n"
         group_info += "\n"
 
         # Проверяем длину текущего сообщения
@@ -446,7 +408,6 @@ async def visualize_by_groups(callback_query: types.CallbackQuery):
     # Отправляем все части сообщений
     for msg in messages:
         await callback_query.message.answer(msg, parse_mode="HTML")
-
 
 
 
