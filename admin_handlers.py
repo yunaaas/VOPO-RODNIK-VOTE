@@ -341,20 +341,20 @@ async def visualize_by_classes(callback_query: types.CallbackQuery):
         return
 
     response = "<b>Визуализация по мастер-классам:</b>\n\n"
-    messages = []  # Для хранения сообщений по частям
+    messages = []  # Для хранения частей сообщений
     current_message = ""  # Текущее сообщение для отправки
 
-    for workshop_name, workshop_data in workshops.items():
-        # Извлекаем данные о мастер-классе
-        participants = workshop_data['participants']
-        max_participants = workshop_data['max_participants']
-        current_participants = len(participants)  # Текущее количество участников
-        available_spots = max_participants - current_participants  # Свободные места
+    for workshop in workshops:  # Предполагается, что workshops — список словарей
+        workshop_name = workshop['workshop_name']
+        workshop_description = workshop['workshop_description']
+        max_participants = workshop['max_participants']
+        current_participants = workshop['current_participants']
+        available_spots = max_participants - current_participants
+        participants = workshop.get('participants', [])
 
         # Формируем информацию о мастер-классе
         workshop_info = (
             f"<b>{workshop_name}:</b>\n"
-            f"  - Описание: {workshop_data.get('description', 'нет описания')}\n"
             f"  - Всего мест: {max_participants}\n"
             f"  - Занято: {current_participants}\n"
             f"  - Свободных мест: {available_spots}\n"
@@ -383,6 +383,7 @@ async def visualize_by_classes(callback_query: types.CallbackQuery):
     # Отправляем все части сообщений
     for msg in messages:
         await callback_query.message.answer(msg, parse_mode="HTML")
+
 
 
 
