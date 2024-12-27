@@ -21,7 +21,7 @@ async def select_event(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     user_name = message.from_user.first_name
     upcoming_events = await db.get_upcoming_events(user_id)
-    string = f"Привет, <b>{user_name}</b>. Вот все доступные вам событие, скорее прими участие в них!"
+    string = f"Привет, <b>{user_name}</b>. Вот все доступные вам события, скорее прими участие в них!"
     if upcoming_events:
         keyboard = InlineKeyboardMarkup()
         for event in upcoming_events:
