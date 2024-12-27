@@ -146,7 +146,7 @@ async def process_workshop_selection(callback_query: types.CallbackQuery, state:
         workshop_description = workshop['workshop_description']
         
         # Ищем фразу "место проведения" и оборачиваем её в тег <b> для жирного шрифта
-        workshop_description = workshop_description.replace("Место проведения", "<b\n>Место проведения:</b>")
+        workshop_description = workshop_description.replace("Место проведения", "<b>\nМесто проведения:</b>")
 
         keyboard = InlineKeyboardMarkup()
         keyboard.add(InlineKeyboardButton("Записаться", callback_data=f"select_workshop_{workshop_id}"))
