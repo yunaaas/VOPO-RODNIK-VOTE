@@ -142,19 +142,26 @@ async def process_workshop_selection(callback_query: types.CallbackQuery, state:
             await callback_query.message.delete_reply_markup()  # Удалим старую клавиатуру
             return
 
+        # Обработка описания мастер-класса
+        workshop_description = workshop['workshop_description']
+        
+        # Ищем фразу "место проведения" и оборачиваем её в тег <b> для жирного шрифта
+        workshop_description = workshop_description.replace("место проведения", "<b>место проведения</b>")
+
         keyboard = InlineKeyboardMarkup()
         keyboard.add(InlineKeyboardButton("Записаться", callback_data=f"select_workshop_{workshop_id}"))
         keyboard.add(InlineKeyboardButton("Назад", callback_data="back_to_workshops"))
 
         # Редактируем сообщение, добавляем новую клавиатуру
         await callback_query.message.edit_text(
-            f"<b>{workshop['workshop_name']}</b>\n{workshop['workshop_description']}\n\n"
+            f"<b>{workshop['workshop_name']}</b>\n{workshop_description}\n\n"
             f"Ведущий: {workshop['instructor']}\nМакс. участников: {workshop['max_participants']}",
             parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
     else:
         await callback_query.message.reply("Мастер-класс не найден.")
+
 
 
 # Редактирование сообщения с мастер-классами
