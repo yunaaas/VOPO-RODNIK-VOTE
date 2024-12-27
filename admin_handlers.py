@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 from bot_instance import bot
 from state import EventState
 
+
 db = EventDatabase()
 
 
@@ -326,30 +327,48 @@ async def select_visualization_method(callback_query: types.CallbackQuery):
     )
 
 
-# Обработчик визуализации по мастер-классам
+
 async def visualize_by_classes(callback_query: types.CallbackQuery):
     event_id = int(callback_query.data.split("_")[-1])
 
     workshops = await db.get_workshops_with_participants(event_id)
 
     if not workshops:
-        await callback_query.message.edit_text(
+        await callback_query.message.answer(
             "<b>Нет данных для визуализации по мастер-классам.</b>",
-            parse_mode=ParseMode.HTML
+            parse_mode="HTML"
         )
         return
 
     response = "<b>Визуализация по мастер-классам:</b>\n\n"
+    messages = []  # Для хранения сообщений по частям
+    current_message = ""  # Текущее сообщение для отправки
+
     for workshop_name, participants in workshops.items():
-        response += f"<b>{workshop_name}:</b>\n"
+        workshop_info = f"<b>{workshop_name}:</b>\n"
         if participants:
             for participant in participants:
-                response += f"  - {participant['name']} (отряд {participant['group_number']})\n"
+                workshop_info += f"  - {participant['name']} (отряд {participant['group_number']})\n"
         else:
-            response += "  - Нет участников\n"
-        response += "\n"
+            workshop_info += "  - Нет участников\n"
+        workshop_info += "\n"
 
-    await callback_query.message.edit_text(response, parse_mode=ParseMode.HTML)
+        # Проверяем длину текущего сообщения
+        if len(current_message) + len(workshop_info) > 4096:  # Ограничение Telegram
+            messages.append(current_message)  # Сохраняем текущее сообщение
+            current_message = ""  # Сбрасываем для новой части
+
+        current_message += workshop_info
+
+    # Добавляем оставшуюся часть
+    if current_message:
+        messages.append(current_message)
+
+    # Отправляем все части сообщений
+    for msg in messages:
+        await callback_query.message.answer(msg, parse_mode="HTML")
+
+
 
 
 # Обработчик визуализации по отрядам
