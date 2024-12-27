@@ -128,7 +128,6 @@ async def handle_vote_selection(callback_query: types.CallbackQuery, state: FSMC
 
 
 
-import re
 
 async def process_workshop_selection(callback_query: types.CallbackQuery, state: FSMContext):
     workshop_id = int(callback_query.data.split("_")[1])
@@ -147,8 +146,8 @@ async def process_workshop_selection(callback_query: types.CallbackQuery, state:
         # Обработка описания мастер-класса
         workshop_description = workshop['workshop_description']
         
-        # Заменяем все вариации фразы "место проведения" (независимо от регистра) на \nМесто проведения
-        workshop_description = re.sub(r"(?i)(место проведения)", r"\nМесто проведения", workshop_description)
+        # Заменяем все вариации фразы "место проведения" (независимо от регистра) на \n<b>Место проведения</b>
+        workshop_description = re.sub(r"(?i)(место проведения)", r"\n<b>Место проведения</b>", workshop_description)
 
         keyboard = InlineKeyboardMarkup()
         keyboard.add(InlineKeyboardButton("Записаться", callback_data=f"select_workshop_{workshop_id}"))
@@ -163,6 +162,7 @@ async def process_workshop_selection(callback_query: types.CallbackQuery, state:
         )
     else:
         await callback_query.message.reply("Мастер-класс не найден.")
+
 
 
 
