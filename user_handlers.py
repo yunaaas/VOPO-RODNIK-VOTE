@@ -215,11 +215,28 @@ async def process_group_number(message: types.Message, state: FSMContext):
     participant_name = data['participant_name']
     workshop_id = data['workshop_id']
     user_id = message.from_user.id
+    workshop = await db.get_workshop_by_id(workshop_id)
+    
+    if not workshop:
+        await message.reply("Мастер-класс не найден.")
+        return
 
     success = await db.register_user_for_workshop(user_id, workshop_id, participant_name, group_number)
 
     if success:
-        await message.reply("Вы успешно записаны.", parse_mode=ParseMode.HTML)
+        # Получаем данные мастер-класса
+        workshop_name = workshop['workshop_name']
+        workshop_description = workshop['workshop_description']
+        max_participants = workshop['max_participants']
+        current_participants = workshop['current_participants']
+        
+        # Рассчитываем количество свободных мест
+        available_spots = max_participants - current_participants
+        
+        # Формируем сообщение с данными мастер-класса и количеством свободных мест
+        await message.reply(f"Вы успешно записаны на мастер-класс <b>{workshop_name}</b>.\n\n"
+                             f"<b>Описание:</b> {workshop_description}\n"
+                             f"<b>Свободных мест:</b> {available_spots}", parse_mode=ParseMode.HTML)
 
         # После записи на мастер-класс редактируем сообщение с доступными событиями
         upcoming_events = await db.get_upcoming_events(user_id)
@@ -237,6 +254,3 @@ async def process_group_number(message: types.Message, state: FSMContext):
         else:
             await message.answer("Вы приняли участие во всех текущих событиях. Используйте /start для просмотра событий, <b>может быть</b> появилось что-то новое :)", parse_mode=ParseMode.HTML)
 
-    else:
-        await message.reply("Ошибка записи. Возможно, нет мест.", parse_mode=ParseMode.HTML)
-    await state.finish()
