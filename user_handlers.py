@@ -191,7 +191,7 @@ async def select_workshop(callback_query: types.CallbackQuery, state: FSMContext
     available_slots = await db.get_available_slots_for_workshop(workshop_id)
     if available_slots <= 0:
         # Получаем мастер-классы с доступными местами
-        event_id = int(callback_query.data.split("_")[1])  # Получаем ID события из callback data
+        event_id = int(callback_query.data.split("_")[2])  # Получаем ID события из callback data
         available_workshops = await db.get_workshops_with_available_slots(event_id)
 
         if not available_workshops:
