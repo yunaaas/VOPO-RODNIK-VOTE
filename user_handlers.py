@@ -190,42 +190,28 @@ async def select_workshop(callback_query: types.CallbackQuery, state: FSMContext
     # Проверяем количество доступных мест
     available_slots = await db.get_available_slots_for_workshop(workshop_id)
     if available_slots <= 0:
-        # Получаем мастер-классы с доступными местами
-        event_id = int(callback_query.data.split("_")[2])  # Получаем ID события из callback data
-        available_workshops = await db.get_workshops_with_available_slots(event_id)
-
-        if not available_workshops:
-            await callback_query.message.edit_text(
-                "К сожалению, места на все мастер-классы закончились. Попробуйте позже.",
-                parse_mode=ParseMode.HTML
-            )
-            await callback_query.message.delete_reply_markup()
-            return
-
-        # Формируем сообщение с доступными мастер-классами
-        response = "<b>Доступные мастер-классы:</b>\n\n"
-        keyboard = InlineKeyboardMarkup()
-
-        for workshop in available_workshops:
-            response += (
-                f"• <b>{workshop['workshop_name']}</b>\n"
-                f"  Свободных мест: {workshop['available_slots']}\n"
-            )
-            keyboard.add(
-                InlineKeyboardButton(
-                    text=f"{workshop['workshop_name']} ({workshop['available_slots']} мест)",
-                    callback_data=f"select_workshop_{event_id}_{workshop['workshop_id']}"
-                )
-            )
-
-        response += "\nВыберите мастер-класс, на который хотите записаться."
-
-        # Отправляем сообщение с кнопками
-        await callback_query.message.edit_text(response, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+        await callback_query.message.edit_text(
+            "К сожалению, места на этот мастер-класс закончились. Напишите /start и выберите другой МК!",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.message.delete_reply_markup()  # Удаляем кнопки
         return
 
-    # Если места есть, продолжаем процесс регистрации
-    await callback_query.message.edit_text("Введите имя и фамилию:", parse_mode=ParseMode.HTML)
+    # Проверяем, зарегистрирован ли пользователь
+    registered = await db.is_user_registered_for_workshop(user_id, workshop_id)
+    if registered:
+        await callback_query.message.edit_text(
+            "Вы уже записаны на этот мастер-класс.",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.message.delete_reply_markup()  # Удаляем кнопки
+        return
+
+    # Если места есть и пользователь не зарегистрирован
+    await callback_query.message.edit_text(
+        "Введите имя и фамилию:",
+        parse_mode=ParseMode.HTML
+    )
     await state.update_data(workshop_id=workshop_id)
     await EventState.waiting_for_participant_name.set()
 
