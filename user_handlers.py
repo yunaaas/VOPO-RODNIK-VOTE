@@ -187,18 +187,34 @@ async def select_workshop(callback_query: types.CallbackQuery, state: FSMContext
     workshop_id = int(callback_query.data.split("_")[2])
     user_id = callback_query.from_user.id
 
-    registered = await db.is_user_registered_for_workshop(user_id, workshop_id)
-
-    if registered:
-        # Если пользователь уже зарегистрирован, редактируем сообщение
-        await callback_query.message.edit_text("Вы уже записаны на этот мастер-класс.", parse_mode=ParseMode.HTML)
+    # Проверяем количество доступных мест
+    available_slots = await db.get_available_slots_for_workshop(workshop_id)
+    if available_slots <= 0:
+        await callback_query.message.edit_text(
+            "К сожалению, места на этот мастер-класс закончились.",
+            parse_mode=ParseMode.HTML
+        )
         await callback_query.message.delete_reply_markup()  # Удаляем кнопки
         return
 
-    # Изменяем текст сообщения и добавляем кнопки
-    await callback_query.message.edit_text("Введите имя и фамилию:", parse_mode=ParseMode.HTML)
+    # Проверяем, зарегистрирован ли пользователь
+    registered = await db.is_user_registered_for_workshop(user_id, workshop_id)
+    if registered:
+        await callback_query.message.edit_text(
+            "Вы уже записаны на этот мастер-класс.",
+            parse_mode=ParseMode.HTML
+        )
+        await callback_query.message.delete_reply_markup()  # Удаляем кнопки
+        return
+
+    # Если места есть и пользователь не зарегистрирован
+    await callback_query.message.edit_text(
+        "Введите имя и фамилию:",
+        parse_mode=ParseMode.HTML
+    )
     await state.update_data(workshop_id=workshop_id)
     await EventState.waiting_for_participant_name.set()
+
 
 
 # Редактируем сообщение после ввода имени участника

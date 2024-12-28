@@ -538,3 +538,18 @@ class EventDatabase:
         upcoming_events = [event for event in events if event['event_id'] not in participated_event_ids]
         return upcoming_events
 
+async def get_available_slots_for_workshop(self, workshop_id):
+    """
+    Возвращает количество доступных мест на мастер-классе.
+    """
+    await self.connect()
+    async with self.con.cursor() as cursor:
+        await cursor.execute("""
+            SELECT max_participants - current_participants
+            FROM workshops
+            WHERE workshop_id = ?
+        """, (workshop_id,))
+        row = await cursor.fetchone()
+        if row:
+            return max(row[0], 0)  # Убедимся, что количество доступных мест не отрицательное
+        return 0  # Если мастер-класс не найден
