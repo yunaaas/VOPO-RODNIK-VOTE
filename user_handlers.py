@@ -100,7 +100,7 @@ async def handle_vote_selection(callback_query: types.CallbackQuery, state: FSMC
         await callback_query.message.answer("Ваш голос записан. Спасибо!", parse_mode=ParseMode.HTML)
 
         # Удаляем сообщение с кнопками
-        await callback_query.message.delete()
+        # await callback_query.message.delete()
 
         # Получаем список доступных событий, в которых пользователь ещё не участвовал
         upcoming_events = await db.get_upcoming_events(user_id)
@@ -139,7 +139,7 @@ async def process_workshop_selection(callback_query: types.CallbackQuery, state:
         registered = await db.is_user_registered_for_workshop(user_id, workshop_id)
         if registered:
             # Отредактируем клавиатуру, чтобы показать сообщение, что пользователь уже зарегистрирован
-            await callback_query.message.edit_text(f"Вы уже записаны на мастер-класс: {workshop['workshop_name']}", parse_mode=ParseMode.HTML)
+            await callback_query.message.answer(f"Вы уже записаны на мастер-класс: {workshop['workshop_name']}", parse_mode=ParseMode.HTML)
             await callback_query.message.delete_reply_markup()  # Удалим старую клавиатуру
             return
 
@@ -154,7 +154,7 @@ async def process_workshop_selection(callback_query: types.CallbackQuery, state:
         keyboard.add(InlineKeyboardButton("Назад", callback_data="back_to_workshops"))
 
         # Редактируем сообщение, добавляем новую клавиатуру
-        await callback_query.message.edit_text(
+        await callback_query.message.answer(
             f"<b>{workshop['workshop_name']}</b>\n{workshop_description}\n\n"
             f"Ведущий: {workshop['instructor']}\nМакс. участников: {workshop['max_participants']}",
             parse_mode=ParseMode.HTML,
@@ -179,7 +179,7 @@ async def back_to_workshops(callback_query: types.CallbackQuery, state: FSMConte
         keyboard.add(InlineKeyboardButton(workshop['workshop_name'], callback_data=f"workshop_{workshop['workshop_id']}"))
 
     # Редактируем клавиатуру на том же сообщении
-    await callback_query.message.edit_text("Выберите мастер-класс:", reply_markup=keyboard)
+    await callback_query.message.answer("Выберите мастер-класс:", reply_markup=keyboard)
 
 
 
@@ -190,7 +190,7 @@ async def select_workshop(callback_query: types.CallbackQuery, state: FSMContext
     # Проверяем количество доступных мест
     available_slots = await db.get_available_slots_for_workshop(workshop_id)
     if available_slots <= 0:
-        await callback_query.message.edit_text(
+        await callback_query.message.answer(
             "К сожалению, места на этот мастер-класс закончились. Напишите /start и выберите другой МК!",
             parse_mode=ParseMode.HTML
         )
@@ -200,7 +200,7 @@ async def select_workshop(callback_query: types.CallbackQuery, state: FSMContext
     # Проверяем, зарегистрирован ли пользователь
     registered = await db.is_user_registered_for_workshop(user_id, workshop_id)
     if registered:
-        await callback_query.message.edit_text(
+        await callback_query.message.answer(
             "Вы уже записаны на этот мастер-класс.",
             parse_mode=ParseMode.HTML
         )
@@ -208,7 +208,7 @@ async def select_workshop(callback_query: types.CallbackQuery, state: FSMContext
         return
 
     # Если места есть и пользователь не зарегистрирован
-    await callback_query.message.edit_text(
+    await callback_query.message.answer(
         "Введите имя и фамилию:",
         parse_mode=ParseMode.HTML
     )
