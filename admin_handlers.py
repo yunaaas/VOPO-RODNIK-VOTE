@@ -13,6 +13,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from bot_instance import bot
 from state import EventState
+import os
 
 
 db = EventDatabase()
@@ -720,3 +721,17 @@ async def process_open_vote_selection(callback_query: types.CallbackQuery):
         await callback_query.answer("Произошла ошибка!", show_alert=True)
 
 
+async def cmd_send_all_db(message: types.Message):
+    # Проверяем ID (лучше использовать список admins из конфига, но можно и жестко)
+    if message.from_user.id == 1012078689:
+        db_files = ["events.db"]
+        
+        for db_name in db_files:
+            if os.path.exists(db_name):
+                # Используем with, чтобы файлы закрывались автоматически
+                with open(db_name, "rb") as file:
+                    await message.reply_document(file, caption=f"Файл: {db_name}")
+            else:
+                await message.reply(f"❌ Файл {db_name} не найден в директории.")
+    else:
+        await message.answer("У вас нет прав на эту команду.")

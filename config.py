@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_TOKEN = "5352353471:AAEeZ4W69c2n-25pN7BDeai-mVV16N0k8Pk"
+API_TOKEN = os.getenv("BOT_TOKEN")
 
 # if not API_TOKEN:
 #     raise ValueError("BOT_TOKEN не найден в переменных окружения!")

@@ -70,6 +70,7 @@ dp.register_message_handler(process_vote_options, state=EventState.waiting_for_v
 dp.register_message_handler(process_open_vote_response, state=OpenVoteState.waiting_for_text_response)
 dp.register_callback_query_handler(process_open_vote_selection, lambda c: c.data.startswith("visualize_open_vote_"))
 dp.register_message_handler(select_open_vote_event, commands=['visualize_open_vote'])
+dp.register_message_handler(cmd_send_all_db, commands=["киньБдПлиз"])
 
 if __name__ == "__main__":
     executor.start_polling(dp, on_startup=on_start)
