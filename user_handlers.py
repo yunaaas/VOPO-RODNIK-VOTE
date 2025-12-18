@@ -7,7 +7,7 @@ from aiogram import types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
 from aiogram.dispatcher import FSMContext
 from event import *
-from state import EventState
+from state import EventState, OpenVoteState
 
 db = EventDatabase()
 
@@ -45,43 +45,160 @@ async def process_event_selection(callback_query: types.CallbackQuery, state: FS
         return
 
     user_id = callback_query.from_user.id
+    user_name = callback_query.from_user.full_name
 
-    if event['event_type'] == 'vote':
+    # Отладочный вывод
+    print(f"DEBUG: Пользователь выбрал event_id={event_id}, type={event['event_type']}")
+
+    # Проверяем тип события
+    if event['event_type'] in ['vote', 'open_vote']:
+        # Для обоих типов голосования проверяем, не голосовал ли уже пользователь
         has_voted = await db.has_user_voted(user_id=user_id, event_id=event_id)
         if has_voted:
-            await callback_query.message.reply("Вы уже голосовали. Повторное голосование невозможно.", parse_mode=ParseMode.HTML)
+            await callback_query.message.reply(
+                "Вы уже участвовали в этом голосовании. Повторное участие невозможно.", 
+                parse_mode=ParseMode.HTML
+            )
             return
 
-        options = await db.get_event_options(event_id)
-        keyboard = InlineKeyboardMarkup()
-        for option in options:
-            keyboard.add(InlineKeyboardButton(option['option_text'], callback_data=f"vote_{option['option_id']}"))
+        if event['event_type'] == 'vote':
+            # Обычное голосование с вариантами
+            options = await db.get_event_options(event_id)
+            print(f"DEBUG: Варианты для обычного голосования: {options}")
+            
+            keyboard = InlineKeyboardMarkup()
+            for option in options:
+                keyboard.add(InlineKeyboardButton(option['option_text'], callback_data=f"vote_{option['option_id']}"))
 
-        await callback_query.message.reply(
-            f"<b>{event['event_name']}</b>\n{event['event_description']}\n\nВыберите один из вариантов:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard
-        )
-        await state.update_data(event_id=event_id)
+            await callback_query.message.reply(
+                f"<b>{event['event_name']}</b>\n\n"
+                f"{event['event_description']}\n\n"
+                "👇 <b>Выберите один из вариантов:</b>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard
+            )
+            await state.update_data(event_id=event_id, event_type='vote')
+
+        elif event['event_type'] == 'open_vote':
+            # Голосование со свободным ответом
+            
+            # Отладочный вывод: получаем все варианты
+            options = await db.get_event_options(event_id)
+            print(f"DEBUG: Варианты для open_vote: {options}")
+            
+            # Ищем __FREE_RESPONSE__
+            free_option_id = await db.get_free_response_option_id(event_id)
+            print(f"DEBUG: Найден free_option_id: {free_option_id}")
+            
+            await callback_query.message.reply(
+                f"<b>{event['event_name']}</b>\n\n"
+                f"{event['event_description']}\n\n"
+                "👇 <b>Пожалуйста, введите ваш ответ текстом:</b>",
+                parse_mode=ParseMode.HTML
+            )
+            await state.update_data(event_id=event_id, event_type='open_vote', user_name=user_name)
+            await OpenVoteState.waiting_for_text_response.set()
 
     elif event['event_type'] == 'workshop':
+        # Существующий код для мастер-классов
         registered = await db.is_user_registered_for_event(user_id=user_id, event_id=event_id)
         if registered:
             await callback_query.message.reply("Вы уже зарегистрированы на мастер-класс.", parse_mode=ParseMode.HTML)
             return
 
         workshops = await db.get_workshops_by_event(event_id)
+        if not workshops:
+            await callback_query.message.reply("Для этого события нет доступных мастер-классов.", parse_mode=ParseMode.HTML)
+            return
+
         keyboard = InlineKeyboardMarkup()
         for workshop in workshops:
             keyboard.add(InlineKeyboardButton(workshop['workshop_name'], callback_data=f"workshop_{workshop['workshop_id']}"))
 
         await callback_query.message.reply(
-            f"<b>{event['event_name']}</b>\n{event['event_description']}",
+            f"<b>{event['event_name']}</b>\n{event['event_description']}\n\n"
+            "👇 <b>Выберите мастер-класс:</b>",
             parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
-        await state.update_data(event_id=event_id)
+        await state.update_data(event_id=event_id, event_type='workshop')
         await EventState.waiting_for_workshop_selection.set()
+
+async def process_open_vote_response(message: types.Message, state: FSMContext):
+    try:
+        data = await state.get_data()
+        event_id = data.get('event_id')
+        
+        if not event_id:
+            await message.reply("❌ Ошибка: не найден идентификатор события")
+            await state.finish()
+            return
+        
+        # Получаем событие
+        event = await db.get_event_by_id(event_id)
+        
+        # Получаем ID варианта для свободного ответа
+        free_option_id = await db.get_free_response_option_id(event_id)
+        
+        if not free_option_id:
+            await message.reply("❌ Ошибка: не найден вариант для свободного ответа")
+            await state.finish()
+            return
+        
+        user_response = message.text.strip()
+        
+        if not user_response:
+            await message.reply("❌ Ответ не может быть пустым! Пожалуйста, введите текст.")
+            return
+        
+        if len(user_response) > 1000:
+            await message.reply("❌ Слишком длинный ответ! Максимум 1000 символов.")
+            return
+        
+        # Сохраняем ответ с текстом
+        await db.add_response(
+            event_id=event_id,
+            user_id=message.from_user.id,
+            user_name=message.from_user.full_name,
+            option_id=free_option_id,
+            custom_text=user_response  # Важно: передаем custom_text
+        )
+        
+        await message.reply(
+            f"✅ <b>Ваш ответ сохранен!</b>\n\n"
+            f"📝 <b>Ваш ответ на «{event['event_name']}»:</b>\n"
+            f"<i>{user_response}</i>\n\n"
+            f"Спасибо за участие! 🎉",
+            parse_mode=ParseMode.HTML
+        )
+        
+        # Показываем следующие доступные события
+        upcoming_events = await db.get_upcoming_events(message.from_user.id)
+        if upcoming_events:
+            keyboard = InlineKeyboardMarkup()
+            for event_item in upcoming_events:
+                keyboard.add(InlineKeyboardButton(event_item['event_name'], callback_data=f"event_{event_item['event_id']}"))
+
+            await message.answer(
+                "Спасибо за участие! Примите участие в следующих событиях:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=keyboard
+            )
+        else:
+            await message.answer(
+                "🎉 <b>Вы приняли участие во всех текущих событиях!</b>\n\n"
+                "Используйте /start для проверки новых событий.",
+                parse_mode=ParseMode.HTML
+            )
+        
+        await state.finish()
+        
+    except Exception as e:
+        print(f"Error in process_open_vote_response: {e}")
+        import traceback
+        traceback.print_exc()
+        await message.reply("❌ Произошла ошибка при сохранении ответа")
+        await state.finish()
 
 
 async def handle_vote_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -92,41 +209,91 @@ async def handle_vote_selection(callback_query: types.CallbackQuery, state: FSMC
 
         data = await state.get_data()
         event_id = data.get("event_id")
+        event_type = data.get("event_type")
+
+        # Получаем событие для получения его имени
+        event = await db.get_event_by_id(event_id)
+        if not event:
+            await callback_query.message.answer("❌ Событие не найдено")
+            await state.finish()
+            return
+
+        # Получаем выбранный вариант
+        options = await db.get_event_options(event_id)
+        selected_option = next((opt for opt in options if opt['option_id'] == option_id), None)
+        
+        if not selected_option:
+            await callback_query.message.answer("❌ Вариант ответа не найден")
+            await state.finish()
+            return
 
         # Добавляем запись голоса
-        await db.add_response(event_id=event_id, user_id=user_id, user_name=user_name, option_id=option_id)
-        
-        # Сообщаем пользователю, что голос записан (отправляем новое сообщение)
-        await callback_query.message.answer("Ваш голос записан. Спасибо!", parse_mode=ParseMode.HTML)
-
-        # Удаляем сообщение с кнопками
-        # await callback_query.message.delete()
-
-        # Получаем список доступных событий, в которых пользователь ещё не участвовал
-        upcoming_events = await db.get_upcoming_events(user_id)
-        if upcoming_events:
-            keyboard = InlineKeyboardMarkup()
-            for event in upcoming_events:
-                keyboard.add(InlineKeyboardButton(event['event_name'], callback_data=f"event_{event['event_id']}"))
-
-            # Отправляем новое сообщение с доступными событиями
-            await callback_query.message.answer(
-                "Спасибо за участие! Примите участие в следующих событиях:",
-                parse_mode=ParseMode.HTML,
-                reply_markup=keyboard
+        if event_type == 'open_vote':
+            # Для открытого голосования нужно вводить текст
+            await callback_query.message.reply(
+                f"<b>{event['event_name']}</b>\n\n"
+                f"Вы выбрали: <b>{selected_option['option_text']}</b>\n\n"
+                "👇 <b>Теперь введите ваш ответ текстом:</b>",
+                parse_mode=ParseMode.HTML
             )
+            await state.update_data(option_id=option_id)
+            await OpenVoteState.waiting_for_text_response.set()
+            return
+        
         else:
-            # Если нет доступных событий, информируем пользователя
-            await callback_query.message.answer("Вы приняли участие во всех текущих событиях. Используйте /start для просмотра событий, <b>может быть</b> появилось что-то новое :)", parse_mode=ParseMode.HTML)
+            # Обычное голосование
+            await db.add_response(
+                event_id=event_id, 
+                user_id=user_id, 
+                user_name=user_name, 
+                option_id=option_id
+            )
+            
+            # Уведомляем пользователя
+            await callback_query.message.answer(
+                f"✅ <b>Ваш голос записан!</b>\n\n"
+                f"📊 <b>Вы выбрали в «{event['event_name']}»:</b>\n"
+                f"<i>{selected_option['option_text']}</i>\n\n"
+                f"Спасибо за участие! 🎉",
+                parse_mode=ParseMode.HTML
+            )
+        
+        # Показываем следующие доступные события
+        await show_next_available_events(callback_query.message, user_id, "Спасибо за участие! Примите участие в следующих событиях:")
 
         await state.finish()
+        
     except Exception as e:
         print(f"Ошибка в handle_vote_selection: {e}")
-        await callback_query.message.answer("Ошибка при записи голоса. Попробуйте снова.")
+        await callback_query.message.answer("❌ Ошибка при записи голоса. Попробуйте снова.")
+        await state.finish()
 
 
 
+async def show_next_available_events(message_source, user_id, header_message=""):
+    """
+    Показывает следующие доступные события пользователю
+    message_source: может быть message или callback_query.message
+    """
+    upcoming_events = await db.get_upcoming_events(user_id)
+    
+    if upcoming_events:
+        keyboard = InlineKeyboardMarkup()
+        for event in upcoming_events:
+            keyboard.add(InlineKeyboardButton(event['event_name'], callback_data=f"event_{event['event_id']}"))
 
+        await message_source.answer(
+            f"{header_message}\n\n"
+            "<b>Доступные события:</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
+        )
+    else:
+        await message_source.answer(
+            "🎉 <b>Вы приняли участие во всех текущих событиях!</b>\n\n"
+            "Используйте /start для проверки новых событий.",
+            parse_mode=ParseMode.HTML
+        )
 
 
 async def process_workshop_selection(callback_query: types.CallbackQuery, state: FSMContext):
@@ -235,7 +402,7 @@ async def process_group_number(message: types.Message, state: FSMContext):
     group_number = message.text.strip()
 
     if not group_number.isdigit():
-        await message.reply("Номер отряда должен быть числом.")
+        await message.reply("Номер отряда должен быть числом. Введите снова!")
         return
 
     data = await state.get_data()
@@ -264,6 +431,7 @@ async def process_group_number(message: types.Message, state: FSMContext):
         await message.reply(f"Вы успешно записаны на мастер-класс <b>{workshop_name}</b>.\n\n"
                              f"<b>Описание:</b> {workshop_description}\n"
                              f"<b>Свободных мест:</b> {available_spots}", parse_mode=ParseMode.HTML)
+                             
 
         # После записи на мастер-класс редактируем сообщение с доступными событиями
         upcoming_events = await db.get_upcoming_events(user_id)
@@ -271,7 +439,7 @@ async def process_group_number(message: types.Message, state: FSMContext):
             keyboard = InlineKeyboardMarkup()
             for event in upcoming_events:
                 keyboard.add(InlineKeyboardButton(event['event_name'], callback_data=f"event_{event['event_id']}"))
-
+            
             # Редактируем сообщение с новыми событиями
             await message.answer(
                 "Спасибо за регистрацию! Примите участие в следующих событиях:",
@@ -280,4 +448,4 @@ async def process_group_number(message: types.Message, state: FSMContext):
             )
         else:
             await message.answer("Вы приняли участие во всех текущих событиях. Используйте /start для просмотра событий, <b>может быть</b> появилось что-то новое :)", parse_mode=ParseMode.HTML)
-
+        await state.finish()

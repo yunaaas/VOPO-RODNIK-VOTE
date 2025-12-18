@@ -18,3 +18,6 @@ class EventState(StatesGroup):
     waiting_for_workshop_selection = State()
     waiting_for_participant_name = State()
     waiting_for_group_number = State()
+
+class OpenVoteState(StatesGroup):
+    waiting_for_text_response = State()

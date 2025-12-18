@@ -25,8 +25,9 @@ async def add_event(message: types.Message):
         await message.reply("У вас нет прав на выполнение этой команды.")
         return
 
-    await message.reply("Выберите тип события: голосование или мастер-класс.", reply_markup=InlineKeyboardMarkup().add(
-        InlineKeyboardButton("Голосование", callback_data="vote"),
+    await message.reply("Выберите тип события:", reply_markup=InlineKeyboardMarkup(row_width=1).add(
+        InlineKeyboardButton("Голосование (варианты)", callback_data="vote"),
+        InlineKeyboardButton("Голосование (свободный ответ)", callback_data="open_vote"),
         InlineKeyboardButton("Мастер-класс", callback_data="workshop")
     ))
     await EventState.waiting_for_event_type.set()
@@ -35,12 +36,15 @@ async def add_event(message: types.Message):
 async def process_event_type(callback_query: types.CallbackQuery, state: FSMContext):
     event_type = callback_query.data
     await state.update_data(event_type=event_type)
-
+    
     if event_type == "workshop":
         await callback_query.message.reply("Введите название мастер-класса:")
         await EventState.waiting_for_event_name.set()
-    else:
-        await callback_query.message.reply("Введите название события для голосования:")
+    elif event_type == "vote":
+        await callback_query.message.reply("Введите название события для голосования с вариантами ответа:")
+        await EventState.waiting_for_event_name.set()
+    else:  # open_vote
+        await callback_query.message.reply("Введите название события для голосования со свободным ответом:")
         await EventState.waiting_for_event_name.set()
 
 
@@ -56,21 +60,46 @@ async def process_event_description(message: types.Message, state: FSMContext):
     event_description = message.text
     data = await state.get_data()
     event_type = data['event_type']
+    event_name = data['event_name']
 
-    await db.add_event(event_name=data['event_name'], event_description=event_description, event_type=event_type)
+    # Добавляем событие в БД
+    await db.add_event(
+        event_name=event_name,
+        event_description=event_description,
+        event_type=event_type
+    )
 
-    await message.reply(f"Событие '{data['event_name']}' добавлено!")
+    await message.reply(f"✅ Событие '{event_name}' добавлено!")
 
     if event_type == "vote":
         await message.reply("Введите варианты ответа для голосования (через |):")
         await EventState.waiting_for_vote_options.set()
-    else:
-        await message.reply("Теперь выберите способ добавления мастер-классов: вручную или через Excel.", reply_markup=InlineKeyboardMarkup().add(
+    elif event_type == "open_vote":
+        # Для открытого голосования создаем специальный маркерный вариант
+        event_id = await db.get_event_id_by_name(event_name)
+        
+        # Отладочный вывод
+        print(f"DEBUG: Создаем open_vote для event_id={event_id}, event_name='{event_name}'")
+        
+        # Добавляем специальный вариант, который означает "свободный ответ"
+        await db.add_option(event_id=event_id, option_text="__FREE_RESPONSE__")
+        
+        # Проверим, что вариант добавился
+        options = await db.get_event_options(event_id)
+        print(f"DEBUG: Варианты после создания: {options}")
+        
+        await message.reply(
+            f"✅ Голосование со свободным ответом '{event_name}' создано!\n\n"
+            "Пользователи смогут вводить свой текст при голосовании."
+        )
+        await state.finish()
+    else:  # workshop
+        await message.reply("Теперь выберите способ добавления мастер-классов: вручную или через Excel.", 
+                          reply_markup=InlineKeyboardMarkup().add(
             InlineKeyboardButton("Вручную", callback_data="manual"),
             InlineKeyboardButton("Через Excel", callback_data="excel")
         ))
         await EventState.waiting_for_workshop_option.set()
-
 
 async def process_vote_options(message: types.Message, state: FSMContext):
     options = message.text.split("|")
@@ -312,6 +341,37 @@ async def select_workshop_event(message: types.Message):
 
     await message.reply("<b>Выберите событие для визуализации мастер-классов:</b>", parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
+async def select_open_vote_event(message: types.Message):
+    """
+    Показывает список открытых голосований для визуализации
+    """
+    if message.from_user.id != YOUR_ADMIN_ID:
+        await message.reply("<b>Ошибка:</b> У вас нет прав на выполнение этой команды.", parse_mode=ParseMode.HTML)
+        return
+
+    events = await db.get_all_events()
+    open_vote_events = [event for event in events if event['event_type'] == 'open_vote']
+
+    if not open_vote_events:
+        await message.reply("<b>Нет доступных открытых голосований.</b>", parse_mode=ParseMode.HTML)
+        return
+
+    keyboard = InlineKeyboardMarkup()
+    for event in open_vote_events:
+        # Получаем количество ответов для этого голосования
+        responses = await db.get_open_vote_responses(event['event_id'])
+        response_count = len(responses)
+        
+        keyboard.add(InlineKeyboardButton(
+            f"{event['event_name']} ({response_count} ответов)",
+            callback_data=f"visualize_open_vote_{event['event_id']}"
+        ))
+
+    await message.reply(
+        "<b>Выберите открытое голосование для просмотра результатов:</b>",
+        parse_mode=ParseMode.HTML, 
+        reply_markup=keyboard
+    )
 
 # Обработчик для выбора метода визуализации
 async def select_visualization_method(callback_query: types.CallbackQuery):
@@ -367,6 +427,33 @@ async def visualize_by_classes(callback_query: types.CallbackQuery):
     # Отправляем все части сообщений
     for msg in messages:
         await callback_query.message.answer(msg, parse_mode="HTML")
+
+
+    
+    # Получаем информацию о свободных местах
+    workshops_with_slots = await db.get_workshops_with_available_slots(event_id)
+
+    if not workshops:
+        await callback_query.message.answer(
+            "<b>Нет данных для визуализации по мастер-классам.</b>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Сначала отправляем информацию о свободных местах
+    if workshops_with_slots:
+        available_slots_message = "<b>🎯 Мастер-классы со свободными местами:</b>\n\n"
+        
+        for workshop in workshops_with_slots:
+            available_slots_message += (
+                f"• <b>{workshop['workshop_name']}</b> - "
+                f"{workshop['available_slots']} свободных мест\n"
+            )
+        
+        # Добавляем разделитель
+        available_slots_message += "\n" + "─" * 40 + "\n\n"
+        
+        await callback_query.message.answer(available_slots_message, parse_mode="HTML")
 
 
 
@@ -515,4 +602,121 @@ async def visualize_vote_results(callback_query: types.CallbackQuery):
     await callback_query.message.answer_photo(photo=photo, caption=results_text, parse_mode=ParseMode.HTML)
 
     buf.close()
+
+async def get_open_vote_stats(self, event_id: int):
+    """
+    Получает статистику по открытому голосованию.
+    """
+    await self.connect()
+    async with self.con.cursor() as cursor:
+        # Общее количество ответов
+        await cursor.execute("""
+            SELECT COUNT(*) 
+            FROM responses r
+            JOIN event_options eo ON r.option_id = eo.option_id
+            WHERE r.event_id = ? AND eo.option_text = '__FREE_RESPONSE__'
+        """, (event_id,))
+        total_responses = (await cursor.fetchone())[0]
+        
+        # Количество уникальных пользователей
+        await cursor.execute("""
+            SELECT COUNT(DISTINCT user_id) 
+            FROM responses r
+            JOIN event_options eo ON r.option_id = eo.option_id
+            WHERE r.event_id = ? AND eo.option_text = '__FREE_RESPONSE__'
+        """, (event_id,))
+        unique_users = (await cursor.fetchone())[0]
+        
+        # Средняя длина ответа
+        await cursor.execute("""
+            SELECT AVG(LENGTH(custom_text))
+            FROM responses r
+            JOIN event_options eo ON r.option_id = eo.option_id
+            WHERE r.event_id = ? AND eo.option_text = '__FREE_RESPONSE__' 
+            AND custom_text IS NOT NULL AND custom_text != ''
+        """, (event_id,))
+        avg_length_result = await cursor.fetchone()
+        avg_length = avg_length_result[0] if avg_length_result[0] else 0
+        
+        return {
+            "total_responses": total_responses,
+            "unique_users": unique_users,
+            "avg_response_length": round(avg_length, 1) if avg_length else 0
+        }
+    
+async def process_open_vote_selection(callback_query: types.CallbackQuery):
+    """
+    Обрабатывает выбор конкретного открытого голосования
+    """
+    try:
+        event_id = int(callback_query.data.split("_")[-1])
+        event = await db.get_event_by_id(event_id)
+        
+        if not event or event['event_type'] != 'open_vote':
+            await callback_query.answer("Событие не найдено или не является открытым голосованием!", show_alert=True)
+            return
+        
+        # Получаем ответы
+        responses = await db.get_open_vote_responses(event_id)
+        
+        if not responses:
+            await callback_query.message.answer(
+                f"📊 <b>Результаты открытого голосования</b>\n\n"
+                f"<b>Название:</b> {event['event_name']}\n"
+                f"<b>Описание:</b> {event['event_description']}\n\n"
+                f"📝 <b>Ответов пока нет.</b>",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        
+        # Формируем заголовок
+        header = (
+            f"📊 <b>Результаты открытого голосования</b>\n\n"
+            f"<b>Название:</b> {event['event_name']}\n"
+            f"<b>Описание:</b> {event['event_description']}\n\n"
+            f"📈 <b>Статистика:</b>\n"
+            f"• Всего ответов: {len(responses)}\n"
+            f"• Уникальных пользователей: {len(set(r['user_name'] for r in responses))}\n\n"
+            f"📝 <b>Все ответы:</b>\n\n"
+        )
+        
+        # Разбиваем на части для отправки
+        messages = []
+        current_message = header
+        
+        for i, response in enumerate(responses, 1):
+            # Форматируем дату
+            date_part = ""
+            if response['response_time']:
+                try:
+                    date_part = str(response['response_time']).split()[0]
+                except:
+                    pass
+            
+            # Формируем строку с ответом
+            response_text = (
+                f"<b>{i}. {response['user_name']}</b>"
+                f"{f' ({date_part})' if date_part else ''}:\n"
+                f"<i>{response['custom_text']}</i>\n\n"
+            )
+            
+            # Проверяем длину
+            if len(current_message) + len(response_text) > 4000:
+                messages.append(current_message)
+                current_message = response_text
+            else:
+                current_message += response_text
+        
+        # Добавляем последнюю часть
+        if current_message:
+            messages.append(current_message)
+        
+        # Отправляем все части
+        for msg in messages:
+            await callback_query.message.answer(msg, parse_mode=ParseMode.HTML)
+        
+    except Exception as e:
+        print(f"Error in process_open_vote_selection: {e}")
+        await callback_query.answer("Произошла ошибка!", show_alert=True)
+
 

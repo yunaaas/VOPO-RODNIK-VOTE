@@ -39,7 +39,7 @@ async def on_start(dp):
 
 # Регистрация обработчиков
 dp.register_message_handler(add_event, commands=['add_event'], state='*')
-dp.register_callback_query_handler(process_event_type, lambda c: c.data in ["vote", "workshop"], state=EventState.waiting_for_event_type)
+dp.register_callback_query_handler(process_event_type, lambda c: c.data in ["vote", "workshop", "open_vote"], state=EventState.waiting_for_event_type)
 dp.register_message_handler(process_event_name, state=EventState.waiting_for_event_name)
 dp.register_message_handler(process_event_description, state=EventState.waiting_for_event_description)
 dp.register_message_handler(process_vote_options, state=EventState.waiting_for_vote_options)
@@ -66,6 +66,10 @@ dp.register_callback_query_handler(back_to_workshops, lambda c: c.data == "back_
 dp.register_callback_query_handler(select_workshop, lambda c: c.data.startswith("select_workshop_"), state=EventState.waiting_for_workshop_selection)
 dp.register_message_handler(process_participant_name, state=EventState.waiting_for_participant_name)
 dp.register_message_handler(process_group_number, state=EventState.waiting_for_group_number)
+dp.register_message_handler(process_vote_options, state=EventState.waiting_for_vote_options)
+dp.register_message_handler(process_open_vote_response, state=OpenVoteState.waiting_for_text_response)
+dp.register_callback_query_handler(process_open_vote_selection, lambda c: c.data.startswith("visualize_open_vote_"))
+dp.register_message_handler(select_open_vote_event, commands=['visualize_open_vote'])
 
 if __name__ == "__main__":
     executor.start_polling(dp, on_startup=on_start)

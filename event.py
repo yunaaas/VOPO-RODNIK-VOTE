@@ -53,6 +53,7 @@ class EventDatabase:
                     user_id INTEGER,
                     user_name TEXT,
                     option_id INTEGER,
+                    custom_text TEXT,
                     response_time DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(event_id) REFERENCES events(event_id),
                     FOREIGN KEY(option_id) REFERENCES event_options(option_id)
@@ -145,14 +146,14 @@ class EventDatabase:
             """, (event_id, workshop_name, workshop_description, instructor, max_participants))
             await self.con.commit()
 
-    async def add_response(self, event_id, user_id, user_name, option_id):
-        await self.connect()
-        async with self.con.cursor() as cursor:
-            await cursor.execute("""
-                INSERT INTO responses (event_id, user_id, user_name, option_id)
-                VALUES (?, ?, ?, ?)
-            """, (event_id, user_id, user_name, option_id))
-            await self.con.commit()
+    # async def add_response(self, event_id, user_id, user_name, option_id):
+    #     await self.connect()
+    #     async with self.con.cursor() as cursor:
+    #         await cursor.execute("""
+    #             INSERT INTO responses (event_id, user_id, user_name, option_id)
+    #             VALUES (?, ?, ?, ?)
+    #         """, (event_id, user_id, user_name, option_id))
+    #         await self.con.commit()
 
     # async def get_all_events(self):
     #     await self.connect()
@@ -163,13 +164,23 @@ class EventDatabase:
     #         return [{"event_id": event[0], "event_name": event[1]} for event in events]
 
     # Добавляем ответ на голосование
-    async def add_response(self, event_id, user_id, user_name, option_id):
-        await self.connect()  # Подключаемся, если еще не подключены
+    async def add_response(self, event_id, user_id, user_name, option_id, custom_text=None):
+        """
+        Добавляет ответ на голосование.
+        Если передан custom_text, сохраняет его вместе с ответом.
+        """
+        await self.connect()
         async with self.con.cursor() as cursor:
-            await cursor.execute("""
-                INSERT INTO responses (event_id, user_id, user_name, option_id)
-                VALUES (?, ?, ?, ?)
-            """, (event_id, user_id, user_name, option_id))
+            if custom_text:
+                await cursor.execute("""
+                    INSERT INTO responses (event_id, user_id, user_name, option_id, custom_text)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (event_id, user_id, user_name, option_id, custom_text))
+            else:
+                await cursor.execute("""
+                    INSERT INTO responses (event_id, user_id, user_name, option_id)
+                    VALUES (?, ?, ?, ?)
+                """, (event_id, user_id, user_name, option_id))
             await self.con.commit()
 
     # Получаем мастер-классы по событию
@@ -575,6 +586,146 @@ class EventDatabase:
                     "workshop_id": row[0],
                     "workshop_name": row[1],
                     "available_slots": row[2]
+                }
+                for row in rows
+            ]
+        
+
+    async def add_response_with_text(self, event_id: int, user_id: int, user_name: str, option_id: int, custom_text: str = None):
+        """
+        Добавляет ответ пользователя с возможностью указания текста.
+        """
+        await self.connect()
+        async with self.con.cursor() as cursor:
+            if custom_text:
+                await cursor.execute("""
+                    INSERT INTO responses (event_id, user_id, user_name, option_id, custom_text)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (event_id, user_id, user_name, option_id, custom_text))
+            else:
+                await cursor.execute("""
+                    INSERT INTO responses (event_id, user_id, user_name, option_id)
+                    VALUES (?, ?, ?, ?)
+                """, (event_id, user_id, user_name, option_id))
+            await self.con.commit()
+    
+    async def get_open_vote_responses(self, event_id: int):
+        """
+        Получает все текстовые ответы для открытого голосования.
+        """
+        await self.connect()
+        async with self.con.cursor() as cursor:
+            await cursor.execute("""
+                SELECT r.user_name, r.custom_text, r.response_time
+                FROM responses r
+                JOIN event_options eo ON r.option_id = eo.option_id
+                WHERE r.event_id = ? AND eo.option_text = '__FREE_RESPONSE__'
+                ORDER BY r.response_time DESC
+            """, (event_id,))
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "user_name": row[0],
+                    "custom_text": row[1],
+                    "response_time": row[2]
+                }
+                for row in rows
+            ]
+    
+    async def get_event_options(self, event_id: int):
+        """
+        Получает варианты ответа для события.
+        """
+        await self.connect()
+        async with self.con.cursor() as cursor:
+            await cursor.execute("""
+                SELECT option_id, option_text 
+                FROM event_options 
+                WHERE event_id = ?
+                ORDER BY option_id
+            """, (event_id,))
+            options = await cursor.fetchall()
+            return [
+                {
+                    "option_id": option[0], 
+                    "option_text": option[1]
+                } 
+                for option in options
+            ]
+    
+    async def get_free_response_option_id(self, event_id: int):
+        """
+        Получает ID варианта ответа для свободного голосования.
+        """
+        await self.connect()
+        async with self.con.cursor() as cursor:
+            await cursor.execute("""
+                SELECT option_id FROM event_options 
+                WHERE event_id = ? AND option_text = '__FREE_RESPONSE__'
+            """, (event_id,))
+            result = await cursor.fetchone()
+            
+            # Отладочный вывод
+            print(f"DEBUG: Поиск __FREE_RESPONSE__ для event_id={event_id}")
+            print(f"DEBUG: Результат поиска: {result}")
+            
+        return result[0] if result else None
+    
+    async def get_vote_results_with_text(self, event_id: int):
+        """
+        Получает результаты голосования, включая текстовые ответы.
+        """
+        await self.connect()
+        async with self.con.cursor() as cursor:
+            # Сначала получаем обычные результаты
+            await cursor.execute("""
+                SELECT 
+                    eo.option_text,
+                    COUNT(r.response_id) AS vote_count,
+                    GROUP_CONCAT(
+                        CASE 
+                            WHEN r.custom_text IS NOT NULL AND r.custom_text != '' 
+                            THEN r.user_name || ': ' || r.custom_text
+                            ELSE NULL
+                        END, 
+                        '\n'
+                    ) AS text_responses
+                FROM event_options eo
+                LEFT JOIN responses r ON eo.option_id = r.option_id
+                WHERE eo.event_id = ?
+                GROUP BY eo.option_id
+            """, (event_id,))
+            rows = await cursor.fetchall()
+            
+            return [
+                {
+                    "option_text": row[0],
+                    "vote_count": row[1],
+                    "text_responses": row[2] if row[2] else None
+                }
+                for row in rows
+            ]
+
+
+    async def get_open_vote_responses(self, event_id: int):
+        """
+        Получает все текстовые ответы для открытого голосования.
+        """
+        await self.connect()
+        async with self.con.cursor() as cursor:
+            await cursor.execute("""
+                SELECT r.user_name, r.custom_text, r.response_time
+                FROM responses r
+                JOIN event_options eo ON r.option_id = eo.option_id
+                WHERE r.event_id = ? AND eo.option_text = '__FREE_RESPONSE__'
+                ORDER BY r.response_time DESC
+            """, (event_id,))
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "user_name": row[0],
+                    "custom_text": row[1] if row[1] else "Без текста",
+                    "response_time": row[2]
                 }
                 for row in rows
             ]
